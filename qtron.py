@@ -1,81 +1,62 @@
-import logging
 import numpy as np
-import time #only used for debugging purposes
 
+""" The Qtron represents one action """
 class Qtron(object):
 
-    def __init__(self, size, parameters):
-        """ parameters should be a dictionary with float values for keys alpha, epsilon and gamma
-            size is how big the input pixel frame is, so with a 20x20 RGB pixel frame size is 20*20*3 """
+    def __init__(self, size, alpha, gamma):
+        """ size is how big the input pixel array is, so with a 20x20 RGB pixel
+            frame the size is 20*20*3
+            alpha is learning rate and gamma is discount of future reward """
 
         self.weights = self.init_weights(size)
-        self.alpha = parameters['alpha']
-        self.epsilon = parameters['epsilon']
-        self.gamma = parameters['gamma']
-        self.value = 0.0 #np.random.random()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.value = 0.0
 
     def init_weights(self, size):
-        """ creates random weights between -0.5 and 0.5 for all inputs and the bias added in forward_pass()"""
+        """ creates random weights between -0.5 and 0.5 for all inputs and
+            the bias added in forward_pass() """
 
-        w = np.random.uniform(-0.5, 0.5, size + 1) # creates array with length size plus one bias weight
-        return w
+        return np.random.uniform(-0.5, 0.5, size + 1)
 
-    def get_max_q(self, actions, q2_state):
-        """ iterates over the qtrons in the 'actions' dictionary to find highest q-value """
+    def get_max_q(self, actions, next_state):
+        """ iterates over the qtrons in the 'actions' dictionary to find the
+            one with highest q-value """
 
-        action_values = [ qtron.forward_pass(q2_state) for qtron in actions.values() ]
+        action_values = [ qtron.forward_pass(next_state) for qtron in actions.values() ]
+        return max(action_values)
 
-        maxQ = max(action_values)
+    def update(self, current_state, next_state, reward, actions):
+        """ actions is a dictionary of all qtrons
+            max value for next state is calculated and used to update weights
+            with back_propagate. new value for this qtron is then calculated """
 
-        return maxQ
-
-
-    def update(self, states, reward, actions):
-        """ updates qtron value """
-
-        # this first self.value assign is redundant in all steps except first time action is taken
-        self.value = self.forward_pass(states[0])
-        #logging.debug("q-tron value is now %s" % (self.value))
-
-        # get maxQ based on the state we observed after action was taken
-        # maxQ is potential future reward
-        maxQ = self.get_max_q(actions, states[1])
-        #logging.debug("maxQ is: %s" % (maxQ))
-
-        # update weights of this qtron with backpropagation
+        maxQ = self.get_max_q(actions, next_state)
         self.back_propagate(reward, maxQ)
-
-        # update qtron value with the new weights
-        self.value = self.forward_pass(states[0])
-        #logging.debug("new qtron value is: %s" % (self.value))
-
+        self.value = self.forward_pass(current_state)
 
     def sigmoid(self, x):
         """ returns the sigmoid value of input 'x' """
 
-        #logging.debug("sigmoid received %s as input" % (x))
         return 1.0 / ( 1.0 + np.exp(-x) )
 
     def forward_pass(self, state):
-        """ calculates q-value for input 'state' """
+        """ calculates q-value for input RGB pixel array 'state' """
 
-        biased_state = np.copy(state) # creates a copy of state
-        biased_state = np.append(biased_state, 1) # adds the bias as extra state value
+        biased_state = np.append(state, 1) # adds bias input
 
+        # dot product returns scalar when inputs are 1d arrays
         return self.sigmoid( np.dot(self.weights, biased_state) )
-        #return np.dot(self.weights, biased_state)
 
     def back_propagate(self, reward, maxQ):
-        """ computes error gradient and backprops it to update weights """
+        """ computes error and backpropagates it to update weights """
 
         error = self.alpha * (reward + self.gamma*maxQ - self.value)
-        #logging.debug("error is now %s" % (error))
 
         # sigmoid derivate is sigmoid(x) * (1 - sigmoid(x) )
         dsig = self.value * (1 - self.value)
 
         gradient = error * dsig
-        #logging.debug("gradient is now: %s" % (gradient))
 
-        self.weights = np.add( self.weights, np.multiply(gradient, self.weights) ) # same as below line
-        #self.weights = [gradient * w + w for w in self.weights]
+        # gradient is multiplied element-wise with weights, result is then added
+        self.weights = np.add( self.weights, np.multiply(gradient, self.weights) )
